@@ -3,7 +3,6 @@ enum ReturnCode {
     Success = 0,
     Warning = 1,
     Critical = 2,
-    Unknown = 3,
 }
 
 impl ReturnCode {
@@ -15,6 +14,10 @@ impl ReturnCode {
 }
 
 fn main() {
+    for rc in ReturnCode::Success as i32..ReturnCode::Critical as i32 {
+        println!("{:?}", rc);
+    }
+
     let mut return_code = ReturnCode::Success;
     return_code.set_if_higher(ReturnCode::Warning);
     println!("{:?}", return_code as i32);
