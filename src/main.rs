@@ -6,16 +6,14 @@ enum ReturnCode {
 }
 
 impl ReturnCode {
-    fn set_if_higher<'a>(&'a mut self, exit_code: &'a mut ReturnCode) {
-        if *exit_code as i32 > *self as i32 {
-            self = exit_code;
-        }
+    fn set_if_higher<'a>(mut self: &'a mut ReturnCode, exit_code: &'a mut ReturnCode) {
+        self = exit_code;
     }
 }
 
 fn main() {
-    for rc in ReturnCode::Success as i32..ReturnCode::Critical as i32 {
-        println!("{:?}", rc);
+    for rc in [ReturnCode::Success, ReturnCode::Warning, ReturnCode::Critical] {
+        println!("{:?}", rc as i32);
     }
 
     let mut return_code = ReturnCode::Success;
