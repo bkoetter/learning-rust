@@ -7,7 +7,10 @@ enum ReturnCode {
 
 impl ReturnCode {
     fn set_if_higher<'a>(mut self: &'a mut ReturnCode, exit_code: &'a mut ReturnCode) {
-        self = exit_code;
+        if *exit_code as i32 > *self as i32 {
+            println!("Changing RC: {:?} -> {:?}", *exit_code as i32, *self as i32);
+            self = exit_code;
+        }
     }
 }
 
