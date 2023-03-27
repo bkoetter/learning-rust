@@ -1,4 +1,21 @@
+#[derive(PartialOrd, PartialEq, Clone, Copy)]
+enum ReturnCode {
+    Success = 0,
+    Warning = 1,
+    Critical = 2,
+    Unknown = 3,
+}
+
+impl ReturnCode {
+    fn set_if_higher(&mut self, mut exit_code: ReturnCode) {
+        if exit_code as i32 > *self as i32 {
+            self = &mut exit_code;
+        }
+    }
+}
+
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    dbg!(args);
+    let mut return_code = ReturnCode::Success;
+    return_code.set_if_higher(ReturnCode::Warning);
+    println!("{:?}", return_code as i32);
 }
