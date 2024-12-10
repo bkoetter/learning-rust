@@ -2,3 +2,8 @@
 name = "learning-rust"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+p12-keystore = "0.1"
+rcgen = { version = "0.13", features = ["aws_lc_rs"] }
+sha1 = "0.10.6"
