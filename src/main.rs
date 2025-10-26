@@ -1,33 +1,117 @@
-use std::env;
-use std::error::Error;
-use reqwest::blocking::get;
+use hmac::{Hmac, KeyInit, Mac};
+use reqwest::{blocking::Client, Method, Url};
+use serde::Serialize;
+use sha2::Sha256;
+use std::env::var;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug)]
-struct Config {
-    api_url: url::Url,
-    _api_key: String,
-    _username: String,
+struct Signature {
+    timestamp: u128,
+    method: Method,
+    api_url: Url,
+    api_key: String,
+    api_secret: String,
+    signature: Option<String>,
 }
 
-impl Config {
-    fn new() -> Result<Config, &'static str> {
-        Ok(Config {
-            api_url: url::Url::parse("https://fake-json-api.mock.beeceptor.com/users")
-                .map_err(|_| "Invalid URL")?,
-            _api_key: env::var("API_KEY")
-                .map_err(|_| "Environment variable 'API_KEY' not set")?,
-            _username: env::var("API_USER")
-                .map_err(|_| "Environment variable 'API_USER' not set")?,
-        })
+impl Signature {
+    fn new(url: Url) -> Self {
+        Self {
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+            method: Method::GET,
+            api_url: url,
+            api_key: var("API_KEY").unwrap(),
+            api_secret: var("API_SECRET").unwrap(),
+            signature: None,
+        }
+    }
+    fn get_signature(mut self) -> Self {
+        let path = match self.api_url.query() {
+            Some(query) => format!("{}?{}", self.api_url.path(), query),
+            None => self.api_url.path().to_string(),
+        };
+        let mut mac = HmacSha256::new_from_slice(self.api_secret.as_bytes()).unwrap();
+        mac.update(&format!("{}{}{}", self.timestamp, self.method, path).into_bytes());
+        self.signature = Some(
+            mac.finalize()
+                .into_bytes()
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect(),
+        );
+        self
     }
 }
 
-fn get_api_data(config: Config) -> String {
-    get(config.api_url).unwrap().text().unwrap()
+#[derive(serde::Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct History {
+    pub items: Vec<HistoryItem>,
+    pub current_page: i64,
+    pub total_pages: i64,
+    pub max_items: i64,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let config = Config::new()?;
-    println!("{:?}", get_api_data(config));
-    Ok(())
+#[derive(serde::Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HistoryItem {
+    pub transaction_id: String,
+    pub executed_at: String,
+    pub r#type: String,
+    pub price_currency: Option<String>,
+    pub price_amount: Option<String>,
+    pub sent_currency: Option<String>,
+    pub sent_amount: Option<String>,
+    pub received_currency: String,
+    pub received_amount: String,
+    pub fees_currency: Option<String>,
+    pub fees_amount: Option<String>,
+    pub address: Option<String>,
+}
+
+fn get_history(config: &Signature) -> reqwest::Result<History> {
+    let url = config.api_url.as_str();
+    Client::new()
+        .get(url)
+        .header("Accept", "application/json")
+        .header("Bitvavo-Access-Key", config.api_key.as_str())
+        .header("Bitvavo-Access-Timestamp", config.timestamp.to_string())
+        .header(
+            "Bitvavo-Access-Signature",
+            config.signature.as_ref().unwrap(),
+        )
+        .send()?
+        .json::<History>()
+}
+
+fn history_print(history: History) {
+    history
+        .items
+        .into_iter()
+        .filter(|item| item.r#type == "buy" && item.received_currency == "BTC")
+        // .map(|item| item.price_currency * item.price_amount.as_ref().unwrap())
+        .for_each(|item| {
+            println!(
+                "{} | {} | {}",
+                item.executed_at,
+                item.received_amount,
+                item.price_amount.unwrap(),
+            );
+        });
+}
+
+fn main() {
+    let url = Url::parse("https://api.bitvavo.com/v2/account/history").unwrap();
+    let signature = Signature::new(url).get_signature();
+    if let Ok(history) = get_history(&signature) {
+        history_print(history)
+    } else {
+        eprintln!("Failed to fetch history");
+    }
 }
