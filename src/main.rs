@@ -75,7 +75,7 @@ struct HistoryItem {
     pub address: Option<String>,
 }
 
-fn get_history(config: &Signature) -> reqwest::Result<History> {
+fn get_transaction_history(config: &Signature) -> reqwest::Result<History> {
     let url = config.api_url.as_str();
     Client::new()
         .get(url)
@@ -90,27 +90,35 @@ fn get_history(config: &Signature) -> reqwest::Result<History> {
         .json::<History>()
 }
 
-fn history_print(history: History) {
-    history
-        .items
+fn history_print(history: Vec<HistoryItem>) {
+    let currency = "BTC";
+    let x = history
         .into_iter()
-        .filter(|item| item.r#type == "buy" && item.received_currency == "BTC")
-        // .map(|item| item.price_currency * item.price_amount.as_ref().unwrap())
-        .for_each(|item| {
-            println!(
-                "{} | {} | {}",
-                item.executed_at,
-                item.received_amount,
-                item.price_amount.unwrap(),
-            );
-        });
+        .filter(|item| item.r#type == "buy" && item.received_currency == currency)
+        .map(|item| {
+            println!("{}: {} {}", item.executed_at, item.received_amount, item.price_amount.as_ref().unwrap());
+            (
+                item.received_amount.parse::<f64>().unwrap()
+                    * item.price_amount.as_ref().unwrap().parse::<f64>().unwrap(),
+                item.received_amount.parse::<f64>().unwrap(),
+            )
+        })
+        .reduce(|acc, x| (acc.0 + x.0, acc.1 + x.1));
+    if let Some((total_spent, total_btc)) = x {
+        println!("Total spent on {currency}: {:.2} EUR", total_spent);
+        println!("Total {currency} bought: {:.8} BTC", total_btc);
+        println!("Average price: {:.2} EUR/{currency}", total_spent / total_btc);
+    } else {
+        println!("No {currency} buy transactions found.");
+    }
 }
 
 fn main() {
     let url = Url::parse("https://api.bitvavo.com/v2/account/history").unwrap();
     let signature = Signature::new(url).get_signature();
-    if let Ok(history) = get_history(&signature) {
-        history_print(history)
+    if let Ok(history) = get_transaction_history(&signature) {
+        history_print(history.items);
+        println!("{}", history.total_pages);
     } else {
         eprintln!("Failed to fetch history");
     }
